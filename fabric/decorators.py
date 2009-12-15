@@ -78,3 +78,22 @@ def runs_once(func):
             decorated.has_run = True
             return func(*args, **kwargs)
     return decorated
+
+
+def task(func):
+    """
+    Decorator declaring the wrapped function to be a Fabric task.
+
+    If this decorator is used, it must be used consistently: Fabric, when
+    detecting use of this decorator, will *only* consider decorated functions
+    to be tasks, even if other public non-internal functions exist.
+
+    If this decorator is not used, Fabric will fall back to its default
+    behavior of considering any public non-internal function to be a valid
+    task.
+    """
+    @wraps(func)
+    def inner_decorator(*args, **kwargs):
+        return func(*args, **kwargs)
+    inner_decorator.is_task = True
+    return inner_decorator

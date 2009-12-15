@@ -23,7 +23,7 @@ from fabric.utils import abort, indent
 
 
 # One-time calculation of "all internal callables" to avoid doing this on every
-# check of a given fabfile callable (in is_task()).
+# check of a given fabfile callable (in extract_tasks())
 _modules = [api, project, files, console]
 _internals = reduce(lambda x, y: x + filter(callable, vars(y).values()),
     _modules,
@@ -89,21 +89,9 @@ def find_fabfile():
     # Implicit 'return None' if nothing was found
 
 
-def is_task(tup):
+def import_fabfile(path):
     """
-    Takes (name, object) tuple, returns True if it's a non-Fab public callable.
-    """
-    name, func = tup
-    return (
-        callable(func)
-        and (func not in _internals)
-        and not name.startswith('_')
-    )
-
-
-def load_fabfile(path):
-    """
-    Import given fabfile path and return dictionary of its public callables.
+    Import fabfile at ``path`` by placing it in the PYTHONPATH and importing.
     """
     # Get directory and fabfile name
     directory, fabfile = os.path.split(path)
@@ -133,10 +121,28 @@ def load_fabfile(path):
     if index is not None:
         sys.path.insert(index + 1, directory)
         del sys.path[0]
-    # Return dictionary of callables only (and don't include Fab operations or
-    # underscored callables)
-    return dict(filter(is_task, vars(imported).items()))
+    # Return the imported module object
+    return imported
 
+def extract_tasks(module):
+    """
+    Given an imported module object, return all valid tasks.
+
+    First, compile a list of callable objects (public or private) exhibiting a
+    ``.is_task`` attribute set to True (i.e. "opt-in", see
+    `~fabric.decorators.task`.) If this list is non-empty, it means the fabfile
+    is using ``@task``, and the list is returned right away.
+
+    Otherwise, we fall back to the default behavior of considering all public
+    callables not included in Fabric itself, as potential tasks.
+    """
+    is_callable = lambda x: callable(x[1])
+    is_marked = lambda x: getattr(x[1], 'is_task', False)
+    is_task = lambda x: not (x[0].startswith('_') or x[1] in _internals)
+    callables = filter(is_callable, vars(module).items())
+    marked_tasks = filter(is_marked, callables)
+    public_nonapi_callables = filter(is_task, callables)
+    return dict(marked_tasks or public_nonapi_callables)
 
 def parse_options():
     """
@@ -393,7 +399,7 @@ def main():
         # Load fabfile (which calls its module-level code, including
         # tweaks to env values) and put its commands in the shared commands
         # dict
-        commands.update(load_fabfile(fabfile))
+        commands.update(extract_tasks(import_fabfile(fabfile)))
 
         # Abort if no commands found
         if not commands and not remainder_arguments:
