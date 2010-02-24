@@ -172,6 +172,13 @@ def parse_options():
         help="print list of possible commands and exit"
     )
 
+    # List task names in format intended for use in bash completion
+    parser.add_option('--complete-tasks',
+        action='store_true',
+        default=False,
+        help="print bash-completion-friendly task list"
+    )
+
     # Display info about a specific command
     parser.add_option('-d', '--display',
         metavar='COMMAND',
@@ -220,6 +227,14 @@ def list_commands():
         else:
             output = name
         print(indent(output))
+    sys.exit(0)
+
+
+def complete_tasks():
+    """
+    Print all known task names, space-separated, for use with bash completion.
+    """
+    print(" ".join(commands.keys()))
     sys.exit(0)
 
 
@@ -406,6 +421,10 @@ def main():
         # Handle list-commands option (now that commands are loaded)
         if options.list_commands:
             list_commands()
+
+        # Ditto for the completion oriented output
+        if options.complete_tasks:
+            complete_tasks()
 
         # Handle show (command-specific help) option
         if options.display:
