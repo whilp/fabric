@@ -17,7 +17,7 @@ from traceback import format_exc
 from contextlib import closing
 
 from fabric.context_managers import settings
-from fabric.network import output_thread, needs_host
+from fabric.network import output_thread, needs_host, input_thread
 from fabric.state import env, connections, output
 from fabric.utils import abort, indent, warn
 
@@ -496,11 +496,13 @@ def _run_command(command, shell=True, pty=False, sudo=False, user=None):
         capture=capture_stdout)
     err_thread = output_thread("[%s] err" % env.host_string, channel,
         stderr=True, capture=capture_stderr)
+    in_thread = input_thread(channel)
     
     # Close when done
     status = channel.recv_exit_status()
     
     # Wait for threads to exit so we aren't left with stale threads
+    in_thread.join()
     out_thread.join()
     err_thread.join()
 
