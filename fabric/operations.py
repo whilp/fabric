@@ -493,7 +493,7 @@ def _run_command(command, shell=True, pty=False, sudo=False, user=None):
             print("[%s] %s: %s" % (env.host_string, which, given_command))
 
         # Get channel (gives us a more useful API than the client object)
-        channel = connections[env.host_string]._transport.open_session()
+        channel = connections[env.host_string].get_transport().open_session()
 
         # Combine stdout and stderr to get around oddball mixing issues
         channel.set_combine_stderr(True)
@@ -525,10 +525,8 @@ def _run_command(command, shell=True, pty=False, sudo=False, user=None):
                         if getattr(channel, '%s_ready' % func)():
                             if (func == 'recv' and output.stdout) \
                                 or (func == 'recv_stderr' and output.stderr):
-                                #pipe.write("[%s] %s\n" % ("out" if
-                                #    func == 'recv' else "err", getattr(channel,
-                                #        func)(1)))
-                                pipe.write(getattr(channel, func)(1))
+                                byte = getattr(channel, func)(1)
+                                pipe.write(byte)
                                 pipe.flush()
 
         # Close when done
