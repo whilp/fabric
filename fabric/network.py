@@ -129,6 +129,9 @@ def join_host_strings(user, host, port=None):
 def connect(user, host, port):
     """
     Create and return a new SSHClient instance connected to given host.
+
+    Also sets up an interactive shell channel which is attached to the
+    SSHClient instance as ``shell``.
     """
     from state import env
 
@@ -145,7 +148,6 @@ def connect(user, host, port):
     # Unless user specified not to, accept/add new, unknown host keys
     if not env.reject_unknown_hosts:
         client.set_missing_host_key_policy(ssh.AutoAddPolicy())
-
 
     #
     # Connection attempt loop
@@ -170,6 +172,12 @@ def connect(user, host, port):
                 look_for_keys=not env.no_keys
             )
             connected = True
+            # Set up interactive shell session
+            shell = client.invoke_shell()
+            # Combine stdout and stderr to get around oddball mixing issues
+            shell.set_combine_stderr(True)
+            # Attach back to the client for use in e.g. run()
+            client.shell = shell
             return client
         # BadHostKeyException corresponds to key mismatch, i.e. what on the
         # command line results in the big banner error about man-in-the-middle

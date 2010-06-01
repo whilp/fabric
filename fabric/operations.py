@@ -392,28 +392,17 @@ def _sudo_prefix(user):
     return prefix
 
 
-def _shell_wrap(command, shell=True, sudo_prefix=None):
+def _shell_wrap(command, sudo_prefix=None):
     """
     Conditionally wrap given command in env.shell (while honoring sudo.)
     """
-    # Honor env.shell, while allowing the 'shell' kwarg to override it (at
-    # least in terms of turning it off.)
-    if shell and not env.use_shell:
-        shell = False
     # Sudo plus space, or empty string
     if sudo_prefix is None:
         sudo_prefix = ""
     else:
         sudo_prefix += " "
-    # If we're shell wrapping, prefix shell and space, escape the command and
-    # then quote it. Otherwise, empty string.
-    if shell:
-        shell = env.shell + " "
-        command = '"%s"' % _shell_escape(command)
-    else:
-        shell = ""
     # Resulting string should now have correct formatting
-    return sudo_prefix + shell + command
+    return sudo_prefix + command
 
 
 def _prefix_commands(command):
@@ -469,7 +458,7 @@ def _execute_remotely(command, sudo=False, shell=True, pty=False, user=None):
     """
 
 
-def _run_command(command, shell=True, pty=False, sudo=False, user=None):
+def _run_command(command, sudo=False, user=None):
     """
     Underpinnings of `run` and `sudo`. See their docstrings for more info.
     """
@@ -479,10 +468,9 @@ def _run_command(command, shell=True, pty=False, sudo=False, user=None):
     try:
         # Set up new var so original argument can be displayed verbatim later.
         given_command = command
-        # Handle context manager modifications, and shell wrapping
+        # Handle context manager modifications, and sudo prefix
         wrapped_command = _shell_wrap(
             _prefix_commands(_prefix_env_vars(command)),
-            shell,
             _sudo_prefix(user) if sudo else None
         )
         # Execute info line
@@ -493,18 +481,14 @@ def _run_command(command, shell=True, pty=False, sudo=False, user=None):
             print("[%s] %s: %s" % (env.host_string, which, given_command))
 
         # Get channel (gives us a more useful API than the client object)
-        channel = connections[env.host_string].get_transport().open_session()
-
-        # Combine stdout and stderr to get around oddball mixing issues
-        channel.set_combine_stderr(True)
-
-        # Create pty if necessary (using Paramiko default options, which as of
-        # 1.7.4 is vt100 $TERM @ 80x24 characters)
-        if pty or env.always_use_pty:
-            channel.get_pty()
+        client = connections[env.host_string]
+        #channel = client.get_transport().open_session()
+        channel = client.shell
 
         # Kick off remote command
-        channel.exec_command(wrapped_command)
+        #channel.exec_command(wrapped_command)
+        channel.sendall(wrapped_command + "\n")
+
 
         # I/O loop
         capture_stdout = capture_stderr = ""
@@ -517,8 +501,9 @@ def _run_command(command, shell=True, pty=False, sudo=False, user=None):
                 if reader is sys.stdin:
                     byte = sys.stdin.read(1)
                     channel.sendall(byte)
-                    sys.stdout.write(byte)
-                    sys.stdout.flush()
+                    # Local echo
+                    # sys.stdout.write(byte)
+                    # sys.stdout.flush()
                 elif reader is channel:
                     for func in ('recv_stderr', 'recv'):
                         pipe = sys.stdout if (func == 'recv') else sys.stderr
@@ -528,6 +513,7 @@ def _run_command(command, shell=True, pty=False, sudo=False, user=None):
                                 byte = getattr(channel, func)(1)
                                 pipe.write(byte)
                                 pipe.flush()
+
 
         # Close when done
         status = channel.recv_exit_status()
@@ -563,15 +549,9 @@ def _run_command(command, shell=True, pty=False, sudo=False, user=None):
 
 
 @needs_host
-def run(command, shell=True, pty=False):
+def run(command):
     """
     Run a shell command on a remote host.
-
-    If ``shell`` is True (the default), `run` will execute the given command
-    string via a shell interpreter, the value of which may be controlled by
-    setting ``env.shell`` (defaulting to something similar to ``/bin/bash -l -c
-    "<command>"``.) Any double-quote (``"``) or dollar-sign (``$``) characters
-    in ``command`` will be automatically escaped when ``shell`` is True.
 
     `run` will return the result of the remote program's stdout as a single
     (likely multiline) string. This string will exhibit ``failed`` and
@@ -582,14 +562,9 @@ def run(command, shell=True, pty=False):
     Standard error will also be attached, as a string, to this return value as
     the ``stderr`` attribute.
 
-    You may pass ``pty=True`` to force allocation of a pseudo tty on
-    the remote end. This is not normally required, but some programs may
-    complain (or, even more rarely, refuse to run) if a tty is not present.
-
     Examples::
     
         run("ls /var/www/")
-        run("ls /home/myuser", shell=False)
         output = run('ls /var/www/site1')
     
     .. versionchanged:: 1.0
@@ -597,11 +572,11 @@ def run(command, shell=True, pty=False):
     .. versionchanged:: 1.0
         Added the ``stderr`` attribute.
     """
-    return _run_command(command, shell, pty)
+    return _run_command(command)
 
 
 @needs_host
-def sudo(command, shell=True, pty=False, user=None):
+def sudo(command, user=None):
     """
     Run a shell command on a remote host, with superuser privileges.
 
@@ -622,7 +597,7 @@ def sudo(command, shell=True, pty=False, user=None):
         result = sudo("ls /tmp/")
     
     """
-    return _run_command(command, shell, pty, sudo=True, user=user) 
+    return _run_command(command, sudo=True, user=user) 
 
 
 def local(command, capture=True):
