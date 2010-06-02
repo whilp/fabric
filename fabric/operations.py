@@ -491,11 +491,11 @@ def _run_command(command, sudo=False, user=None):
 
 
         # I/O loop
-        capture_stdout = capture_stderr = ""
+        capture_stdout, capture_stderr = "", ""
         while not channel.exit_status_ready() \
             or channel.recv_ready() or channel.recv_stderr_ready():
             readers, writers, exceptions = select.select(
-                [sys.stdin, channel], [], [channel], 0.0
+                [sys.stdin, channel], [channel], [channel], 0.0
             )
             for reader in readers:
                 if reader is sys.stdin:
@@ -505,15 +505,25 @@ def _run_command(command, sudo=False, user=None):
                     # sys.stdout.write(byte)
                     # sys.stdout.flush()
                 elif reader is channel:
-                    for func in ('recv_stderr', 'recv'):
-                        pipe = sys.stdout if (func == 'recv') else sys.stderr
+                    for func in ('recv', 'recv_stderr'):
                         if getattr(channel, '%s_ready' % func)():
-                            if (func == 'recv' and output.stdout) \
-                                or (func == 'recv_stderr' and output.stderr):
-                                byte = getattr(channel, func)(1)
-                                pipe.write(byte)
-                                pipe.flush()
-
+                            byte = getattr(channel, func)(1)
+                            if func == 'recv':
+                                capture_stdout += byte
+                                if output.stdout:
+                                    sys.stdout.write(byte)
+                                    sys.stdout.flush()
+                            else:
+                                capture_stderr += byte
+                                if output.stderr:
+                                    sys.stderr.write(byte)
+                                    sys.stderr.flush()
+            for writer in writers:
+                if writer is channel:
+                    print "Chan ready for writing"
+            for exception in exceptions:
+                if exception is channel:
+                    print "Chan had an exception!"
 
         # Close when done
         status = channel.recv_exit_status()

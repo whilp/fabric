@@ -173,11 +173,11 @@ def connect(user, host, port):
             )
             connected = True
             # Set up interactive shell session
-            shell = client.invoke_shell()
-            # Combine stdout and stderr to get around oddball mixing issues
-            shell.set_combine_stderr(True)
+            channel = client.get_transport().open_session()
+            #channel.get_pty()
+            channel.invoke_shell()
             # Attach back to the client for use in e.g. run()
-            client.shell = shell
+            client.shell = channel
             return client
         # BadHostKeyException corresponds to key mismatch, i.e. what on the
         # command line results in the big banner error about man-in-the-middle
@@ -448,13 +448,15 @@ def disconnect_all():
     Disconnect from all currently connected servers.
 
     Used at the end of ``fab``'s main loop, and also intended for use by
-    library users.
+    library users. Terminates all shell sessions and then disconnects the SSH
+    channels.
     """
     from fabric.state import connections, output
     # Explicitly disconnect from all servers
     for key in connections.keys():
+        client = connections[key]
         if output.status:
             print "Disconnecting from %s..." % denormalize(key),
-        connections[key].close()
+        client.close()
         if output.status:
             print "done."
