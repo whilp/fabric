@@ -20,7 +20,7 @@ from traceback import format_exc
 from contextlib import closing
 
 from fabric.context_managers import settings
-from fabric.network import needs_host
+from fabric.network import needs_host, _communicate
 from fabric.state import env, connections, output
 from fabric.utils import abort, indent, warn, puts
 
@@ -492,8 +492,8 @@ def _run_command(command, sudo=False, user=None):
 
         # I/O loop
         capture_stdout, capture_stderr = "", ""
-        while not channel.exit_status_ready() \
-            or channel.recv_ready() or channel.recv_stderr_ready():
+        done = False
+        while not done:
             readers, writers, exceptions = select.select(
                 [sys.stdin, channel], [channel], [channel], 0.0
             )
@@ -510,26 +510,26 @@ def _run_command(command, sudo=False, user=None):
                             byte = getattr(channel, func)(1)
                             if func == 'recv':
                                 capture_stdout += byte
-                                if output.stdout:
-                                    sys.stdout.write(byte)
-                                    sys.stdout.flush()
+                                #if output.stdout:
+                                    #sys.stdout.write(byte)
+                                    #sys.stdout.flush()
+                                # Shell prompt sentinel check
+                                done = capture_stdout.endswith(env.shell_prompt)
                             else:
                                 capture_stderr += byte
                                 if output.stderr:
                                     sys.stderr.write(byte)
                                     sys.stderr.flush()
-            for writer in writers:
-                if writer is channel:
-                    print "Chan ready for writing"
-            for exception in exceptions:
-                if exception is channel:
-                    print "Chan had an exception!"
 
-        # Close when done
-        status = channel.recv_exit_status()
-        
-        # Close channel
-        channel.close()
+        # If we're here, we saw the sentinel/prompt, so obtain return value of
+        # the command we just ran
+        print "$$$$$$$$ capture_stdout: %s $$$$$$$$$$$$$" % capture_stdout
+        status = _communicate(
+            channel,
+            sentinel=env.shell_prompt,
+            command="echo $?"
+        )
+        print "######### status: %s #########" % status
 
         # Assemble output string
         out = _AttributeString(capture_stdout.strip())

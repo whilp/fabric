@@ -4,6 +4,7 @@ Internal shared-state variables such as config settings and host lists.
 
 import os
 import sys
+from datetime import datetime
 from optparse import make_option
 
 from fabric.network import HostConnectionCache
@@ -225,6 +226,9 @@ env = _AttributeDict({
     'real_fabfile': None,
     'roledefs': {},
     'sudo_prompt': 'sudo password:',
+    # Relatively arbitrary, hopefully-unique sentinel value for use with
+    # invoke_shell().
+    'shell_prompt': 'fabric_shell_prompt_%s' % id(__name__),
     # -S so sudo accepts passwd via stdin, -p with our known-value prompt for
     # later detection (thus %s -- gets filled with env.sudo_prompt at runtime)
     'sudo_prefix': "sudo -S -p '%s' ",

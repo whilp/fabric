@@ -9,6 +9,8 @@ import threading
 import select
 import socket
 import sys
+import termios
+import tty
 
 from fabric.utils import abort
 
@@ -126,6 +128,58 @@ def join_host_strings(user, host, port=None):
     return "%s@%s%s" % (user, host, port_string)
 
 
+def _communicate(channel, sentinel, command=None, stdin=None, stdout=None):
+    """
+    Select on sys.stdin, ``channel`` until ``sentinel`` is seen on ``channel``.
+
+    Will execute ``command`` string before looping, if given.
+
+    Will execute ``stdin(channel, byte)`` when there is standard input to be
+    read from the local user. If ``stdin`` is ``None``, no action is taken.
+
+    Will execute ``stdout(channel, byte)`` when there is output from the remote
+    end. If ``stdin`` is ``None``, no action is taken.
+
+    Returns all output gathered from the remote end, including the final
+    ``sentinel`` string.
+
+    Thus, when called with no arguments, ``_communicate`` will simply return
+    any and all output from the remote end until ``sentinel`` is seen (if
+    ever).
+    """
+    from fabric.state import connections, env
+    if sentinel is None:
+        sentinel = env.shell_prompt
+    old_stdin_settings = termios.tcgetattr(sys.stdin)
+    tty.setcbreak(sys.stdin)
+    try:
+        if command is not None:
+            channel.sendall(command + "\n")
+        capture = ""
+        done = False
+        while not done:
+            readers, writers, exceptions = select.select(
+                [sys.stdin, channel], [channel], [channel], 0.0
+            )
+            for reader in readers:
+                if reader is sys.stdin:
+                    byte = sys.stdin.read(1)
+                    if stdin:
+                        stdin(channel, byte)
+                    # channel.sendall(byte)
+                elif reader is channel:
+                    byte = channel.recv(1)
+                    capture += byte
+                    print "> %s" % byte
+                    done = capture.endswith(sentinel)
+                    if stdout:
+                        stdout(channel, byte)
+                        # sys.stdout.write(byte) and sys.stdout.flush()
+        return capture
+    finally:
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_stdin_settings)
+
+
 def connect(user, host, port):
     """
     Create and return a new SSHClient instance connected to given host.
@@ -172,12 +226,19 @@ def connect(user, host, port):
                 look_for_keys=not env.no_keys
             )
             connected = True
-            # Set up interactive shell session
-            channel = client.get_transport().open_session()
-            #channel.get_pty()
-            channel.invoke_shell()
-            # Attach back to the client for use in e.g. run()
-            client.shell = channel
+            # Set up interactive shell session and attach back to the client
+            # for use in e.g. run()
+            client.shell = client.invoke_shell()
+            # Force prompt to be what we want, user's default PS1 and/or
+            # PROMPT_COMMAND be damned.
+            print "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+            client.shell.sendall("export PROMPT_COMMAND=\n")
+            client.shell.sendall("export PS1='%s'\n" % env.shell_prompt)
+            # Eat the resulting stdout (have to do it twice -- once for the
+            # echo of our own input, and once again for the actual prompt.)
+            _communicate(channel=client.shell, sentinel=env.shell_prompt)
+            _communicate(channel=client.shell, sentinel=env.shell_prompt)
+            print "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
             return client
         # BadHostKeyException corresponds to key mismatch, i.e. what on the
         # command line results in the big banner error about man-in-the-middle
