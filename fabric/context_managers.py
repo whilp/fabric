@@ -85,13 +85,19 @@ def _setenv(**kwargs):
     to be used directly.
     """
     previous = {}
+    newsettings = []
     for key, value in kwargs.iteritems():
-        previous[key] = env[key]
+        try:
+            previous[key] = env[key]
+        except KeyError:
+            newsettings.append(key)
         env[key] = value
     try:
         yield
     finally:
         env.update(previous)
+        for key in newsettings:
+            env.pop(key)
 
 
 def settings(*args, **kwargs):

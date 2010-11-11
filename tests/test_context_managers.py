@@ -15,6 +15,12 @@ def test_settings_restored():
         assert env.user == "foo"
     assert env.user == "bar"
 
+def test_settings_extras():
+    assert "newkey" not in env
+    with settings(newkey="foo"):
+        assert env.newkey == "foo"
+    assert "newkey" not in env
+
 #
 # cd()
 #
