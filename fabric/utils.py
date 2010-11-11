@@ -3,8 +3,21 @@ Internal subroutines for e.g. aborting execution with an error message,
 or performing indenting on multiline output.
 """
 
+import logging
 import sys
 import textwrap
+
+try:
+	NullHandler = logging.NullHandler
+except AttributeError:
+	# logging.NullHandler first appeared in CPython 2.7.
+	class NullHandler(logging.Handler):
+		def emit(self, record):
+			pass
+
+# Add a do-nothing handler to prevent log spam if the caller hasn't configured
+# logging.
+logging.getLogger("fabric").addHandler(NullHandler())
 
 def abort(msg):
     """
