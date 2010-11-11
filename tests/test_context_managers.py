@@ -5,6 +5,15 @@ from nose.tools import eq_
 from fabric.state import env
 from fabric.context_managers import cd, settings
 
+#
+# settings()
+#
+
+def test_settings_restored():
+    env.user = "bar"
+    with settings(user="foo"):
+        assert env.user == "foo"
+    assert env.user == "bar"
 
 #
 # cd()
